@@ -80,7 +80,9 @@ class Marketplace extends Component
         abort_unless(Gate::allows('admin'), 403);
 
         app(MarketplaceClient::class)->catalog(fresh: true);
-        $this->dispatch('toast', message: __('Catalogue actualisé'), type: 'success');
+        app(PluginInstaller::class)->checkUpdates();
+
+        $this->dispatch('toast', message: __('Catalogue et versions actualisés'), type: 'success');
     }
 
     private function guard(): void
