@@ -9,7 +9,7 @@ trait TalksToGitHub
 {
     /**
      * A GitHub HTTP client with conservative timeouts. Public repos work without
-     * auth; an optional token raises the rate limit (services.github.token).
+     * auth; an optional token raises the rate limit (board-marketplace.api_token).
      */
     protected function github(): PendingRequest
     {
@@ -18,7 +18,7 @@ trait TalksToGitHub
             'User-Agent' => 'BoardBot/1.0 (+marketplace)',
         ])->connectTimeout(5)->timeout(30);
 
-        $token = config('services.github.token');
+        $token = config('board-marketplace.api_token');
 
         return $token ? $request->withToken($token) : $request;
     }

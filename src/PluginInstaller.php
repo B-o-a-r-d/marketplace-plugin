@@ -192,7 +192,22 @@ class PluginInstaller
 
     private function hostSdkVersion(): string
     {
-        return $this->normalize(InstalledVersions::getPrettyVersion('board/plugin-sdk') ?? '0.0.0');
+        $pretty = $this->normalize(InstalledVersions::getPrettyVersion('board/plugin-sdk') ?? '0.0.0');
+
+        // A dev/branch build (e.g. "dev-master") is not SemVer-comparable; prefer
+        // its numeric branch-alias ("0.2.x-dev") so the compatibility gate still
+        // works when the host runs the SDK from a path/VCS branch.
+        if (! preg_match('/^\d/', $pretty)) {
+            $aliases = InstalledVersions::getRawData()['versions']['board/plugin-sdk']['aliases'] ?? [];
+
+            foreach ($aliases as $alias) {
+                if (preg_match('/^\d/', $alias)) {
+                    return $alias;
+                }
+            }
+        }
+
+        return $pretty;
     }
 
     private function normalize(string $version): string
