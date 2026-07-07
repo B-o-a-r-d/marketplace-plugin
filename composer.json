@@ -1,0 +1,42 @@
+{
+    "name": "board/marketplace",
+    "description": "Optional runtime plugin marketplace for the Board Kanban app — install/update Power-Ups with no redeploy.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["board", "kanban", "marketplace", "plugins"],
+    "require": {
+        "php": "^8.3",
+        "board/plugin-sdk": "^0.2",
+        "composer/semver": "^3.4",
+        "illuminate/console": "^11 || ^12 || ^13",
+        "illuminate/contracts": "^11 || ^12 || ^13",
+        "illuminate/database": "^11 || ^12 || ^13",
+        "illuminate/http": "^11 || ^12 || ^13",
+        "illuminate/support": "^11 || ^12 || ^13",
+        "livewire/livewire": "^3 || ^4",
+        "symfony/yaml": "^6 || ^7"
+    },
+    "autoload": {
+        "psr-4": {
+            "Board\\Marketplace\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Board\\Marketplace\\MarketplaceServiceProvider"
+            ]
+        }
+    },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../board-plugin-sdk"
+        }
+    ],
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true
+    }
+}
