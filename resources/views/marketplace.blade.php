@@ -61,7 +61,10 @@
                                 @foreach ($entry['capabilities'] as $cap)
                                     <span class="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">{{ $cap }}</span>
                                 @endforeach
-                                <a href="https://github.com/{{ $entry['repo'] }}" target="_blank" rel="noopener noreferrer" class="text-[11px] text-neutral-400 hover:text-indigo-600 hover:underline">{{ $entry['repo'] }} ↗</a>
+                                <a href="https://github.com/{{ $entry['repo'] }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1 text-[11px] text-neutral-400 hover:text-indigo-600 hover:underline" title="{{ __('Voir sur GitHub') }}">
+                                    {{ $entry['repo'] }}
+                                    <x-phosphor-arrow-square-out class="h-3 w-3 shrink-0"/>
+                                </a>
                             </div>
                             @if ($pkg?->load_error)
                                 <p class="mt-2 rounded bg-red-50 px-2 py-1 text-[11px] text-red-600 dark:bg-red-500/10 dark:text-red-400">{{ __('Erreur de chargement') }} : {{ $pkg->load_error }}</p>
