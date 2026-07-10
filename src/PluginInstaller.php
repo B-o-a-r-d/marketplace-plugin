@@ -4,6 +4,7 @@ namespace Board\Marketplace;
 
 use Board\Marketplace\Concerns\TalksToGitHub;
 use Board\Marketplace\Models\PluginPackage;
+use Board\PluginSdk\Sdk;
 use Composer\InstalledVersions;
 use Composer\Semver\Semver;
 use Illuminate\Support\Facades\Auth;
@@ -121,6 +122,19 @@ class PluginInstaller
             ]));
         }
 
+        // Contract gate: refuse a plugin built against an SDK contract the host
+        // cannot run. This is stricter than the SemVer check above (a breaking
+        // contract change can slip into a patch that still satisfies `^0.2`) and
+        // is what the loader re-checks at boot to stay crash-safe.
+        $contract = Sdk::pluginContract($manifest);
+
+        if (! Sdk::supportsContract($contract)) {
+            throw new PluginInstallException(__('Ce plugin cible un contrat SDK incompatible (:built) — l\'hôte supporte :host.', [
+                'built' => $contract === null ? 'non déclaré' : (string) $contract,
+                'host' => implode(', ', Sdk::SUPPORTED_CONTRACTS),
+            ]));
+        }
+
         $this->downloadAndExtract($repo, $tag, $entry['key']);
 
         return PluginPackage::updateOrCreate(
@@ -130,6 +144,7 @@ class PluginInstaller
                 'repo' => $repo,
                 'version' => $this->normalize($tag),
                 'sdk_constraint' => $constraint,
+                'contract_version' => $contract,
                 'path' => 'plugins/'.$entry['key'],
                 'enabled' => true,
                 'installed_by' => Auth::id(),

@@ -49,6 +49,9 @@
                                     @unless ($pkg->enabled)
                                         <span class="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-700">{{ __('inactif') }}</span>
                                     @endunless
+                                    @unless ($pkg->isCompatible())
+                                        <span class="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-500/15 dark:text-red-400">{{ __('incompatible') }}</span>
+                                    @endunless
                                     @if ($pkg->hasUpdate())
                                         <span class="rounded px-1.5 py-0.5 text-[10px] font-medium {{ $pkg->breaking_update ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' }}">
                                             {{ $pkg->breaking_update ? __('maj majeure v:v', ['v' => $pkg->available_version]) : __('maj v:v', ['v' => $pkg->available_version]) }}
@@ -66,7 +69,11 @@
                                     <x-phosphor-arrow-square-out class="h-3 w-3 shrink-0"/>
                                 </a>
                             </div>
-                            @if ($pkg?->load_error)
+                            @if ($pkg && ! $pkg->isCompatible())
+                                <p class="mt-2 rounded bg-red-50 px-2 py-1 text-[11px] text-red-600 dark:bg-red-500/10 dark:text-red-400">
+                                    {{ $pkg->incompatibilityReason() }} {{ __("Désactivé automatiquement pour ne pas affecter l'application.") }}
+                                </p>
+                            @elseif ($pkg?->load_error)
                                 <p class="mt-2 rounded bg-red-50 px-2 py-1 text-[11px] text-red-600 dark:bg-red-500/10 dark:text-red-400">{{ __('Erreur de chargement') }} : {{ $pkg->load_error }}</p>
                             @endif
                         </div>

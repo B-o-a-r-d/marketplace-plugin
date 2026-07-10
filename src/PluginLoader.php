@@ -38,6 +38,17 @@ class PluginLoader
         $providers = [];
 
         foreach ($packages as $package) {
+            // Compatibility gate FIRST: an incompatible plugin's class would raise
+            // an UNCATCHABLE fatal the moment it is declared, so it must never be
+            // loaded. Flag it and skip — the app boots, the marketplace shows it as
+            // "update required". This is the safety net that keeps a stale plugin
+            // from taking down the whole host.
+            if (! $package->isCompatible()) {
+                rescue(fn () => $package->update(['load_error' => $package->incompatibilityReason()]));
+
+                continue;
+            }
+
             try {
                 $providers = array_merge($providers, $this->collect($package));
             } catch (\Throwable $e) {
