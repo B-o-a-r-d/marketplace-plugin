@@ -91,6 +91,12 @@
                                 @endif
                             @endif
                             <div class="flex items-center gap-1.5">
+                                @if (in_array($entry['key'], $configurableKeys, true))
+                                    <button type="button" wire:click="startSettings('{{ $entry['key'] }}')" @disabled(! $enabled)
+                                            class="rounded-lg border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800">
+                                        {{ __('Configurer') }}
+                                    </button>
+                                @endif
                                 <button type="button" wire:click="togglePackage('{{ $entry['key'] }}')" @disabled(! $enabled)
                                         class="rounded-lg border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800">
                                     {{ $pkg->enabled ? __('Désactiver') : __('Activer') }}
@@ -111,4 +117,57 @@
             </div>
         @endforelse
     </div>
+
+    {{-- Instance settings for an installed plugin (no-code, no .env) --}}
+    @if ($configuringKey !== null)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" wire:key="plugin-settings-{{ $configuringKey }}">
+            <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
+                <h2 class="text-lg font-semibold">{{ __('Réglages') }} · {{ $configuringKey }}</h2>
+                <p class="mt-1 text-xs text-neutral-500">{{ __("Réglages d'instance, appliqués à tous les boards. Aucun redémarrage ni .env requis.") }}</p>
+
+                <div class="mt-4 space-y-4">
+                    @foreach ($settingsFields as $field)
+                        @php $type = $field['type'] ?? 'text'; @endphp
+                        <div>
+                            <label class="mb-1 block text-sm font-medium">
+                                {{ $field['label'] ?? $field['key'] }}
+                                @if ($field['required'] ?? false)<span class="text-red-500">&nbsp;*</span>@endif
+                            </label>
+
+                            @if ($type === 'boolean')
+                                <input type="checkbox" wire:model="settingsDraft.{{ $field['key'] }}"
+                                       class="h-4 w-4 rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500">
+                            @elseif ($type === 'select')
+                                <select wire:model="settingsDraft.{{ $field['key'] }}"
+                                        class="block w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-800">
+                                    @foreach (($field['options'] ?? []) as $opt)
+                                        <option value="{{ $opt['value'] }}">{{ $opt['label'] }}</option>
+                                    @endforeach
+                                </select>
+                            @else
+                                <input type="{{ $type === 'password' ? 'password' : 'text' }}"
+                                       wire:model="settingsDraft.{{ $field['key'] }}"
+                                       placeholder="{{ $type === 'password' ? '••••••••' : ($field['placeholder'] ?? '') }}"
+                                       class="block w-full rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/40 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800">
+                            @endif
+
+                            @if (! empty($field['help']))
+                                <p class="mt-1 text-xs text-neutral-500">{{ $field['help'] }}</p>
+                            @endif
+                            @error('settingsDraft.'.$field['key'])
+                                <p class="mt-1 text-xs text-red-600 dark:text-red-400">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="mt-6 flex justify-end gap-2">
+                    <button type="button" wire:click="cancelSettings"
+                            class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{{ __('Annuler') }}</button>
+                    <button type="button" wire:click="saveSettings"
+                            class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">{{ __('Enregistrer') }}</button>
+                </div>
+            </div>
+        </div>
+    @endif
 </div>

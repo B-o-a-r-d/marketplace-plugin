@@ -24,6 +24,11 @@ class PluginInstaller
 
     private const API = 'https://api.github.com';
 
+    /** Zip-bomb / archive sanity caps. */
+    private const MAX_ARCHIVE_ENTRIES = 5000;
+
+    private const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024;
+
     /**
      * Install (or reinstall) the latest release of a catalog entry.
      *
@@ -31,6 +36,9 @@ class PluginInstaller
      */
     public function install(array $entry): PluginPackage
     {
+        $this->assertValidRepo($entry['repo']);
+        $this->assertValidKey($entry['key']);
+
         return $this->installTag($entry, $this->latestReleaseTag($entry['repo']));
     }
 
@@ -41,6 +49,8 @@ class PluginInstaller
     public function update(string $key, bool $confirmBreaking = false): PluginPackage
     {
         $package = PluginPackage::where('key', $key)->firstOrFail();
+        $this->assertValidRepo($package->repo);
+        $this->assertValidKey($package->key);
         $tag = $this->latestReleaseTag($package->repo);
 
         if ($this->isBreaking($package->version, $this->normalize($tag)) && ! $confirmBreaking) {
@@ -93,6 +103,9 @@ class PluginInstaller
     private function installTag(array $entry, string $tag): PluginPackage
     {
         $repo = $entry['repo'];
+        $this->assertValidRepo($repo);
+        $this->assertValidKey($entry['key']);
+        $this->assertSafeRef($tag);
         $manifest = $this->composerJsonAt($repo, $tag);
 
         if ($manifest === null) {
@@ -148,6 +161,16 @@ class PluginInstaller
             throw new PluginInstallException(__('L\'archive de la release n\'est pas un zip valide.'));
         }
 
+        try {
+            $this->assertArchiveIsSafe($zip);
+        } catch (PluginInstallException $e) {
+            $zip->close();
+            @unlink($tmpZip);
+            File::deleteDirectory($extractDir);
+
+            throw $e;
+        }
+
         $zip->extractTo($extractDir);
         $zip->close();
         @unlink($tmpZip);
@@ -165,6 +188,71 @@ class PluginInstaller
         File::ensureDirectoryExists(dirname($target));
         File::moveDirectory($inner, $target);
         File::deleteDirectory($extractDir);
+    }
+
+    /**
+     * Reject an archive before extraction if any entry could escape the target
+     * directory (zip-slip): absolute paths, `..` traversal, symlinks — plus
+     * entry-count and total-size caps against zip bombs.
+     */
+    private function assertArchiveIsSafe(ZipArchive $zip): void
+    {
+        if ($zip->numFiles > self::MAX_ARCHIVE_ENTRIES) {
+            throw new PluginInstallException(__('L\'archive contient trop de fichiers.'));
+        }
+
+        $total = 0;
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $stat = $zip->statIndex($i);
+
+            if ($stat === false) {
+                throw new PluginInstallException(__('Entrée d\'archive illisible.'));
+            }
+
+            $name = (string) $stat['name'];
+
+            if ($name === '' || str_contains($name, "\0") || str_contains($name, '\\')) {
+                throw new PluginInstallException(__('Nom d\'entrée d\'archive invalide.'));
+            }
+
+            // Absolute path, Windows drive, or a `..` traversal segment = escape.
+            if (str_starts_with($name, '/') || preg_match('#^[A-Za-z]:#', $name) || in_array('..', explode('/', $name), true)) {
+                throw new PluginInstallException(__('Chemin d\'archive non autorisé (traversée).'));
+            }
+
+            // Symlink entries could redirect a later write outside the sandbox.
+            if (((($stat['external_attr'] ?? 0) >> 16) & 0xF000) === 0xA000) {
+                throw new PluginInstallException(__('Lien symbolique interdit dans l\'archive.'));
+            }
+
+            $total += (int) ($stat['size'] ?? 0);
+
+            if ($total > self::MAX_ARCHIVE_BYTES) {
+                throw new PluginInstallException(__('L\'archive décompressée est trop volumineuse.'));
+            }
+        }
+    }
+
+    private function assertValidRepo(string $repo): void
+    {
+        if (str_contains($repo, '..') || ! preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repo)) {
+            throw new PluginInstallException(__('Dépôt de plugin invalide.'));
+        }
+    }
+
+    private function assertValidKey(string $key): void
+    {
+        if (! preg_match('/^[a-z0-9][a-z0-9._-]*$/', $key)) {
+            throw new PluginInstallException(__('Clé de plugin invalide.'));
+        }
+    }
+
+    private function assertSafeRef(string $tag): void
+    {
+        if ($tag === '' || str_contains($tag, '..') || ! preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/', $tag)) {
+            throw new PluginInstallException(__('Tag de release invalide.'));
+        }
     }
 
     /**

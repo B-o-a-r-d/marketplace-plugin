@@ -95,10 +95,24 @@ class MarketplaceClient
             return null;
         }
 
+        $key = (string) $meta['key'];
+        $repo = (string) $meta['repo'];
+
+        // Reject entries whose key/repo would be unsafe downstream (filesystem
+        // paths and GitHub API URLs). The catalog is community-contributed, so a
+        // malformed or malicious entry is simply dropped rather than trusted.
+        if (! preg_match('/^[a-z0-9][a-z0-9._-]*$/', $key)) {
+            return null;
+        }
+
+        if (str_contains($repo, '..') || ! preg_match('#^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$#', $repo)) {
+            return null;
+        }
+
         return [
-            'key' => (string) $meta['key'],
+            'key' => $key,
             'name' => (string) ($meta['name'] ?? $meta['key']),
-            'repo' => (string) $meta['repo'],
+            'repo' => $repo,
             'description' => (string) ($meta['description'] ?? ''),
             'author' => (string) ($meta['author'] ?? ''),
             'homepage' => (string) ($meta['homepage'] ?? ''),
