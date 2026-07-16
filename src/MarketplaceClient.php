@@ -17,9 +17,36 @@ class MarketplaceClient
 {
     use TalksToGitHub;
 
-    private const CACHE_KEY = 'marketplace:catalog';
+    /**
+     * Versioned: bump the suffix whenever the entry schema changes, so a warm
+     * cache written by an older release can never poison newer code.
+     */
+    private const CACHE_KEY = 'marketplace:catalog:v2';
 
     private const TTL_MINUTES = 60;
+
+    /**
+     * Every key an entry is guaranteed to carry — applied on cache READ, so even
+     * a stale/partial cached payload renders with safe defaults instead of
+     * exploding on a missing key.
+     *
+     * @var array<string, mixed>
+     */
+    private const ENTRY_DEFAULTS = [
+        'key' => '',
+        'name' => '',
+        'repo' => '',
+        'package' => '',
+        'description' => '',
+        'author' => '',
+        'homepage' => '',
+        'icon' => 'puzzle-piece',
+        'capabilities' => [],
+        'category' => 'other',
+        'banner' => '',
+        'screenshots' => [],
+        'readme' => '',
+    ];
 
     private function repo(): string
     {
@@ -35,7 +62,8 @@ class MarketplaceClient
             Cache::forget(self::CACHE_KEY);
         }
 
-        return collect(Cache::remember(self::CACHE_KEY, now()->addMinutes(self::TTL_MINUTES), fn (): array => $this->fetch()));
+        return collect(Cache::remember(self::CACHE_KEY, now()->addMinutes(self::TTL_MINUTES), fn (): array => $this->fetch()))
+            ->map(fn (array $entry): array => $entry + self::ENTRY_DEFAULTS);
     }
 
     /**
