@@ -4,6 +4,7 @@ namespace Board\Marketplace;
 
 use Board\Marketplace\Concerns\TalksToGitHub;
 use Board\Marketplace\Models\PluginPackage;
+use Board\Marketplace\Support\ComposerProject;
 use Board\PluginSdk\Sdk;
 use Composer\InstalledVersions;
 use Composer\Semver\Semver;
@@ -12,12 +13,17 @@ use Illuminate\Support\Facades\File;
 use ZipArchive;
 
 /**
- * Installs / updates / removes plugin *packages* at runtime from their GitHub
- * releases — no Composer, no image rebuild. Packages land on a persistent volume
- * (`storage/app/plugins/<key>/`) and are booted by the marketplace's PluginLoader.
+ * Installs / updates / removes plugin *packages* at runtime — no image rebuild.
  *
- * A plugin depends on the SDK only, so there is nothing to resolve: we verify the
- * release is compatible with the host SDK, download its zipball and extract it.
+ * Two sources:
+ * - **composer** (catalog entries with a `package` name, or a custom source):
+ *   `composer require` inside the dedicated plugins project on the persistent
+ *   volume ({@see ComposerProject}) — real dependency resolution, Packagist or
+ *   any configured repository.
+ * - **archive** (legacy): the GitHub release zipball extracted to
+ *   `storage/app/plugins/<key>/` — kept for catalog entries without a package.
+ *
+ * Both land on the persistent volume and are booted by the PluginLoader.
  */
 class PluginInstaller
 {
@@ -30,15 +36,21 @@ class PluginInstaller
 
     private const MAX_ARCHIVE_BYTES = 100 * 1024 * 1024;
 
+    public function __construct(private readonly ComposerProject $project) {}
+
     /**
      * Install (or reinstall) the latest release of a catalog entry.
      *
-     * @param  array{key: string, name: string, repo: string}  $entry
+     * @param  array{key: string, name: string, repo: string, package?: string}  $entry
      */
     public function install(array $entry): PluginPackage
     {
         $this->assertValidRepo($entry['repo']);
         $this->assertValidKey($entry['key']);
+
+        if (! empty($entry['package'])) {
+            return $this->installComposer($entry);
+        }
 
         return $this->installTag($entry, $this->latestReleaseTag($entry['repo']));
     }
@@ -50,6 +62,22 @@ class PluginInstaller
     public function update(string $key, bool $confirmBreaking = false): PluginPackage
     {
         $package = PluginPackage::where('key', $key)->firstOrFail();
+
+        if ($package->available_version !== null
+            && $this->isBreaking($package->version, $package->available_version)
+            && ! $confirmBreaking) {
+            throw new PluginInstallException(__('Mise à jour majeure — confirmez pour continuer.'));
+        }
+
+        if ($package->isComposer()) {
+            return $this->installComposer([
+                'key' => $package->key,
+                'name' => $package->name,
+                'repo' => $package->repo,
+                'package' => $package->package_name,
+            ], $package->available_version);
+        }
+
         $this->assertValidRepo($package->repo);
         $this->assertValidKey($package->key);
         $tag = $this->latestReleaseTag($package->repo);
@@ -73,7 +101,12 @@ class PluginInstaller
             return;
         }
 
-        File::deleteDirectory(storage_path('app/plugins/'.$package->key));
+        if ($package->isComposer()) {
+            $this->project->remove($package->package_name);
+        } else {
+            File::deleteDirectory(storage_path('app/plugins/'.$package->key));
+        }
+
         $package->delete();
     }
 
@@ -83,10 +116,15 @@ class PluginInstaller
      */
     public function checkUpdates(): void
     {
+        // One `composer outdated` run resolves every composer-sourced plugin at
+        // once — uniformly across Packagist and custom repositories.
+        $latestByName = rescue(fn () => $this->project->outdated(), [], report: true);
+
         foreach (PluginPackage::all() as $package) {
             try {
-                $tag = $this->latestReleaseTag($package->repo);
-                $available = $this->normalize($tag);
+                $available = $package->isComposer()
+                    ? ($latestByName[$package->package_name] ?? $package->version)
+                    : $this->normalize($this->latestReleaseTag($package->repo));
 
                 $package->update([
                     'available_version' => $available,
@@ -95,6 +133,80 @@ class PluginInstaller
             } catch (\Throwable $e) {
                 report($e);
             }
+        }
+    }
+
+    /**
+     * Composer path: require the package inside the plugins project (resolution
+     * happens against the host's `replace` map, so an SDK-incompatible plugin
+     * fails to resolve), then re-check the SDK contract on the installed code —
+     * rolling the install back if the gate refuses it.
+     *
+     * @param  array{key: string, name: string, repo: string, package?: string}  $entry
+     */
+    private function installComposer(array $entry, ?string $version = null): PluginPackage
+    {
+        $name = (string) $entry['package'];
+        $this->assertValidPackageName($name);
+
+        $this->project->sync($this->customRepositories());
+        $this->project->require($name, $version !== null ? '^'.ltrim($version, 'vV') : null);
+
+        $manifest = $this->project->installedManifest($name);
+
+        if ($manifest === null) {
+            rescue(fn () => $this->project->remove($name));
+            throw new PluginInstallException(__('La release n\'a pas de composer.json lisible.'));
+        }
+
+        $contract = Sdk::pluginContract($manifest);
+
+        if (! Sdk::supportsContract($contract)) {
+            rescue(fn () => $this->project->remove($name));
+            throw new PluginInstallException(__('Ce plugin cible un contrat SDK incompatible (:built) — l\'hôte supporte :host.', [
+                'built' => $contract === null ? 'non déclaré' : (string) $contract,
+                'host' => implode(', ', Sdk::SUPPORTED_CONTRACTS),
+            ]));
+        }
+
+        $installed = $this->project->installedVersion($name) ?? '0.0.0';
+
+        return PluginPackage::updateOrCreate(
+            ['key' => $entry['key']],
+            [
+                'name' => $entry['name'],
+                'repo' => $entry['repo'],
+                'package_name' => $name,
+                'source' => 'composer',
+                'version' => $installed,
+                'sdk_constraint' => $manifest['require']['board/plugin-sdk'] ?? null,
+                'contract_version' => $contract,
+                'path' => 'plugins/vendor/'.$name,
+                'enabled' => true,
+                'installed_by' => Auth::id(),
+                'available_version' => $installed,
+                'breaking_update' => false,
+                'load_error' => null,
+            ],
+        );
+    }
+
+    /**
+     * Extra composer repositories for the plugins project (custom sources are
+     * introduced by the marketplace UI in a later phase; empty for now).
+     *
+     * @return array<int, array{type: string, url: string}>
+     */
+    protected function customRepositories(): array
+    {
+        return [];
+    }
+
+    private function assertValidPackageName(string $name): void
+    {
+        // Composer's own package-name rule (vendor/name, lowercase).
+        if (! preg_match('#^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]?|-{0,2})[a-z0-9]+)*$#', $name)) {
+            throw new PluginInstallException(__('Nom de package composer invalide.'));
         }
     }
 

@@ -109,10 +109,20 @@ class MarketplaceClient
             return null;
         }
 
+        // Optional composer package name → the entry installs via the plugins
+        // composer project (Packagist or a configured repository) instead of the
+        // legacy zipball extract. A malformed name is dropped, not trusted.
+        $package = (string) ($meta['package'] ?? '');
+
+        if ($package !== '' && ! preg_match('#^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]?|-{0,2})[a-z0-9]+)*$#', $package)) {
+            $package = '';
+        }
+
         return [
             'key' => $key,
             'name' => (string) ($meta['name'] ?? $meta['key']),
             'repo' => $repo,
+            'package' => $package,
             'description' => (string) ($meta['description'] ?? ''),
             'author' => (string) ($meta['author'] ?? ''),
             'homepage' => (string) ($meta['homepage'] ?? ''),

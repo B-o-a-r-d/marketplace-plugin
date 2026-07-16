@@ -11,9 +11,18 @@ use Illuminate\Database\Eloquent\Model;
  * per-board plugin instance). The extracted code lives on a persistent volume
  * at `storage/app/plugins/<key>/` and is booted by the marketplace's PluginLoader.
  */
-#[Fillable(['key', 'name', 'repo', 'version', 'sdk_constraint', 'contract_version', 'path', 'enabled', 'installed_by', 'available_version', 'breaking_update', 'load_error'])]
+#[Fillable(['key', 'name', 'repo', 'package_name', 'source', 'version', 'sdk_constraint', 'contract_version', 'path', 'enabled', 'installed_by', 'available_version', 'breaking_update', 'load_error'])]
 class PluginPackage extends Model
 {
+    /**
+     * Whether this package is managed by the plugins composer project
+     * (installed via `composer require`) rather than a legacy archive extract.
+     */
+    public function isComposer(): bool
+    {
+        return $this->source === 'composer' && $this->package_name !== null;
+    }
+
     /**
      * @return array<string, string>
      */

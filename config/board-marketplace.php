@@ -14,4 +14,10 @@ return [
     */
     'api_token' => env('MARKETPLACE_GITHUB_TOKEN'),
 
+    /*
+    | The composer binary used to manage the plugins project on the persistent
+    | volume (composer-sourced plugins). Must be on PATH or an absolute path.
+    */
+    'composer_binary' => env('MARKETPLACE_COMPOSER_BINARY', 'composer'),
+
 ];

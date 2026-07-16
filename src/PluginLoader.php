@@ -7,10 +7,10 @@ use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Boots plugin *packages* installed at runtime from the marketplace. For each
- * enabled package on the persistent volume it registers a PSR-4 autoloader and
- * the package's Laravel provider(s) — so a plugin installed from the UI is live
- * on the next request, with no Composer step and no image rebuild.
+ * Boots plugin *packages* installed at runtime from the marketplace — so a
+ * plugin installed from the UI is live on the next request, with no image
+ * rebuild. Composer-sourced packages resolve through the plugins project's own
+ * vendor/autoload.php; legacy archive packages get a manual PSR-4 autoloader.
  *
  * Each package is isolated: a broken one is flagged (`load_error`) and skipped,
  * never crashing the app boot.
@@ -32,6 +32,19 @@ class PluginLoader
 
         if ($packages->isEmpty()) {
             return;
+        }
+
+        // The plugins project autoloader (composer-sourced packages + their own
+        // dependencies). Registered before the contract gate below so it never
+        // loads a class by itself — classes only resolve when a provider boots.
+        $autoload = storage_path('app/plugins/vendor/autoload.php');
+
+        if ($packages->contains(fn (PluginPackage $p) => $p->isComposer()) && is_file($autoload)) {
+            try {
+                require_once $autoload;
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         /** @var array<int, array{package: PluginPackage, class: string}> $providers */
@@ -84,8 +97,12 @@ class PluginLoader
             throw new \RuntimeException("Missing composer.json for plugin [{$package->key}].");
         }
 
-        foreach (($manifest['autoload']['psr-4'] ?? []) as $prefix => $dir) {
-            $this->psr4[ltrim($prefix, '\\')] = rtrim($base.'/'.ltrim((string) $dir, '/'), '/');
+        // Composer-sourced packages are autoloaded by the plugins project's own
+        // vendor/autoload.php — only legacy archives need the manual PSR-4 map.
+        if (! $package->isComposer()) {
+            foreach (($manifest['autoload']['psr-4'] ?? []) as $prefix => $dir) {
+                $this->psr4[ltrim($prefix, '\\')] = rtrim($base.'/'.ltrim((string) $dir, '/'), '/');
+            }
         }
 
         return array_map(
