@@ -4,12 +4,14 @@ namespace Board\Marketplace;
 
 use Board\Marketplace\Concerns\TalksToGitHub;
 use Board\Marketplace\Models\PluginPackage;
+use Board\Marketplace\Models\PluginRepository;
 use Board\Marketplace\Support\ComposerProject;
 use Board\PluginSdk\Sdk;
 use Composer\InstalledVersions;
 use Composer\Semver\Semver;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Str;
 use ZipArchive;
 
 /**
@@ -192,14 +194,38 @@ class PluginInstaller
     }
 
     /**
-     * Extra composer repositories for the plugins project (custom sources are
-     * introduced by the marketplace UI in a later phase; empty for now).
+     * Install a plugin straight from a composer package name — Packagist or any
+     * of the instance's custom repositories. Nothing is read from the catalog:
+     * the key and display name derive from the package name.
+     */
+    public function installFromSource(string $package): PluginPackage
+    {
+        $this->assertValidPackageName($package);
+
+        return $this->installComposer([
+            'key' => str_replace('/', '-', $package),
+            'name' => Str::headline(Str::after($package, '/')),
+            'repo' => $package,
+            'package' => $package,
+        ]);
+    }
+
+    /**
+     * Extra composer repositories for the plugins project, managed from the
+     * marketplace UI (the composer.json `repositories` equivalent).
      *
      * @return array<int, array{type: string, url: string}>
      */
     protected function customRepositories(): array
     {
-        return [];
+        return PluginRepository::query()
+            ->orderBy('id')
+            ->get()
+            ->map(fn (PluginRepository $repository): array => [
+                'type' => $repository->type,
+                'url' => $repository->url,
+            ])
+            ->all();
     }
 
     private function assertValidPackageName(string $name): void

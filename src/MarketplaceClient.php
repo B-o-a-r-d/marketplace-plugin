@@ -118,6 +118,19 @@ class MarketplaceClient
             $package = '';
         }
 
+        // Banner / screenshots are rendered as <img src>: only https URLs are
+        // kept (the catalog is community-contributed).
+        $banner = (string) ($meta['banner'] ?? '');
+
+        if (! $this->safeImageUrl($banner)) {
+            $banner = '';
+        }
+
+        $screenshots = array_values(array_filter(
+            array_map('strval', (array) ($meta['screenshots'] ?? [])),
+            fn (string $url): bool => $this->safeImageUrl($url),
+        ));
+
         return [
             'key' => $key,
             'name' => (string) ($meta['name'] ?? $meta['key']),
@@ -129,7 +142,16 @@ class MarketplaceClient
             'icon' => (string) ($meta['icon'] ?? 'puzzle-piece'),
             'capabilities' => array_map('strval', (array) ($meta['capabilities'] ?? [])),
             'category' => (string) ($meta['category'] ?? 'other'),
+            'banner' => $banner,
+            'screenshots' => $screenshots,
             'readme' => trim($m[2]),
         ];
+    }
+
+    private function safeImageUrl(string $url): bool
+    {
+        return $url !== ''
+            && strtolower((string) parse_url($url, PHP_URL_SCHEME)) === 'https'
+            && parse_url($url, PHP_URL_HOST) !== null;
     }
 }
