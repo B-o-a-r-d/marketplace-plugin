@@ -117,6 +117,12 @@ class ComposerProject
      */
     public function outdated(): array
     {
+        // Before the first composer install there is no project to inspect —
+        // and the nightly checkUpdates must not log a failure for that.
+        if (! is_file($this->manifestPath())) {
+            return [];
+        }
+
         $output = $this->runner->run(['outdated', '--direct', '--format=json'], $this->path());
         $rows = json_decode($output, true)['installed'] ?? [];
 

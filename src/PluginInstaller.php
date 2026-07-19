@@ -119,8 +119,11 @@ class PluginInstaller
     public function checkUpdates(): void
     {
         // One `composer outdated` run resolves every composer-sourced plugin at
-        // once — uniformly across Packagist and custom repositories.
-        $latestByName = rescue(fn () => $this->project->outdated(), [], report: true);
+        // once — uniformly across Packagist and custom repositories. Skipped
+        // entirely while nothing is composer-installed.
+        $latestByName = PluginPackage::where('source', 'composer')->exists()
+            ? rescue(fn () => $this->project->outdated(), [], report: true)
+            : [];
 
         foreach (PluginPackage::all() as $package) {
             try {
