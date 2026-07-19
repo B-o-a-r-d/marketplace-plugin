@@ -4,6 +4,7 @@ namespace Board\Marketplace;
 
 use Board\Marketplace\Models\PluginPackage;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -91,10 +92,23 @@ class PluginLoader
     private function collect(PluginPackage $package): array
     {
         $base = storage_path('app/'.$package->path);
-        $manifest = json_decode((string) @file_get_contents($base.'/composer.json'), true);
+
+        // The parsed manifest is cached per (key, version) — version-addressed,
+        // so updates naturally roll to a fresh key and no invalidation is ever
+        // needed. This runs on EVERY request; without the cache each enabled
+        // package cost a disk read + JSON parse per request. Failed parses are
+        // never cached (a fixed file must be picked up on the next boot).
+        $cacheKey = "marketplace:manifest:{$package->key}:{$package->version}";
+        $manifest = Cache::get($cacheKey);
 
         if (! is_array($manifest)) {
-            throw new \RuntimeException("Missing composer.json for plugin [{$package->key}].");
+            $manifest = json_decode((string) @file_get_contents($base.'/composer.json'), true);
+
+            if (! is_array($manifest)) {
+                throw new \RuntimeException("Missing composer.json for plugin [{$package->key}].");
+            }
+
+            Cache::put($cacheKey, $manifest, now()->addDay());
         }
 
         // Composer-sourced packages are autoloaded by the plugins project's own
@@ -126,10 +140,26 @@ class PluginLoader
         }
     }
 
+    /**
+     * Schema::hasTable() queries information_schema — on every request, since
+     * this loader runs at boot. Once the table exists it never un-exists, so a
+     * positive answer is cached forever; only a not-yet-migrated install keeps
+     * probing.
+     */
     private function tableReady(): bool
     {
         try {
-            return Schema::hasTable('plugin_packages');
+            if (Cache::get('marketplace:table-ready') === true) {
+                return true;
+            }
+
+            $ready = Schema::hasTable('plugin_packages');
+
+            if ($ready) {
+                Cache::forever('marketplace:table-ready', true);
+            }
+
+            return $ready;
         } catch (\Throwable) {
             return false;
         }
