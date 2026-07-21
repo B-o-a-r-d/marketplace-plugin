@@ -9,6 +9,7 @@ use Board\Marketplace\Support\ComposerProject;
 use Board\PluginSdk\Sdk;
 use Composer\InstalledVersions;
 use Composer\Semver\Semver;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -176,6 +177,13 @@ class PluginInstaller
 
         $installed = $this->project->installedVersion($name) ?? '0.0.0';
 
+        try {
+            $this->runPluginMigrations($this->project->path().'/vendor/'.$name);
+        } catch (\Throwable $e) {
+            rescue(fn () => $this->project->remove($name));
+            throw new PluginInstallException(__('Échec des migrations du plugin :message', ['message' => mb_substr($e->getMessage(), 0, 300)]));
+        }
+
         return PluginPackage::updateOrCreate(
             ['key' => $entry['key']],
             [
@@ -231,6 +239,27 @@ class PluginInstaller
             ->all();
     }
 
+    /**
+     * Run the package's own migrations (database/migrations) at install/update,
+     * so a plugin can ship schema (e.g. a workspace-type plugin's tables). No-op
+     * when the package ships none. Uninstall keeps the tables — data is never
+     * dropped by removing a plugin.
+     */
+    private function runPluginMigrations(string $packageDir): void
+    {
+        $migrations = $packageDir.'/database/migrations';
+
+        if (! is_dir($migrations)) {
+            return;
+        }
+
+        Artisan::call('migrate', [
+            '--realpath' => true,
+            '--path' => $migrations,
+            '--force' => true,
+        ]);
+    }
+
     private function assertValidPackageName(string $name): void
     {
         // Composer's own package-name rule (vendor/name, lowercase).
@@ -277,6 +306,13 @@ class PluginInstaller
         }
 
         $this->downloadAndExtract($repo, $tag, $entry['key']);
+
+        try {
+            $this->runPluginMigrations(storage_path('app/plugins/'.$entry['key']));
+        } catch (\Throwable $e) {
+            File::deleteDirectory(storage_path('app/plugins/'.$entry['key']));
+            throw new PluginInstallException(__('Échec des migrations du plugin :message', ['message' => mb_substr($e->getMessage(), 0, 300)]));
+        }
 
         return PluginPackage::updateOrCreate(
             ['key' => $entry['key']],
