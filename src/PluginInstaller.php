@@ -6,8 +6,8 @@ use Board\Marketplace\Concerns\TalksToGitHub;
 use Board\Marketplace\Models\PluginPackage;
 use Board\Marketplace\Models\PluginRepository;
 use Board\Marketplace\Support\ComposerProject;
+use Board\Marketplace\Support\HostPackages;
 use Board\PluginSdk\Sdk;
-use Composer\InstalledVersions;
 use Composer\Semver\Semver;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
@@ -472,22 +472,11 @@ class PluginInstaller
 
     private function hostSdkVersion(): string
     {
-        $pretty = $this->normalize(InstalledVersions::getPrettyVersion('board/plugin-sdk') ?? '0.0.0');
-
-        // A dev/branch build (e.g. "dev-master") is not SemVer-comparable; prefer
-        // its numeric branch-alias ("0.2.x-dev") so the compatibility gate still
-        // works when the host runs the SDK from a path/VCS branch.
-        if (! preg_match('/^\d/', $pretty)) {
-            $aliases = InstalledVersions::getRawData()['versions']['board/plugin-sdk']['aliases'] ?? [];
-
-            foreach ($aliases as $alias) {
-                if (preg_match('/^\d/', $alias)) {
-                    return $alias;
-                }
-            }
-        }
-
-        return $pretty;
+        // Read from the host's installed.php ({@see HostPackages}), never from
+        // InstalledVersions: once the plugins-project autoloader is live, the
+        // SDK resolves as a "replaced" entry of that project (no pretty
+        // version) and the gate would see 0.0.0 — refusing every install.
+        return $this->normalize(HostPackages::prettyVersion('board/plugin-sdk') ?? '0.0.0');
     }
 
     private function normalize(string $version): string

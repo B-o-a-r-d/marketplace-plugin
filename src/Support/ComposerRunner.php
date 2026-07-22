@@ -25,8 +25,18 @@ class ComposerRunner
     {
         $home = $workingDirectory.'/.composer';
 
+        // --no-interaction / --no-plugins are global; --no-scripts and
+        // --no-progress only exist on the mutating commands — read-only ones
+        // (outdated, show) reject them and the whole call would fail.
+        $hardening = ['--no-interaction', '--no-plugins'];
+
+        if (in_array($arguments[0] ?? '', ['install', 'update', 'require', 'remove'], true)) {
+            $hardening[] = '--no-scripts';
+            $hardening[] = '--no-progress';
+        }
+
         $process = new Process(
-            [$this->binary(), ...$arguments, '--no-interaction', '--no-scripts', '--no-plugins', '--no-progress'],
+            [$this->binary(), ...$arguments, ...$hardening],
             $workingDirectory,
             [
                 'COMPOSER_HOME' => $home,

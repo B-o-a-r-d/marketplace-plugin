@@ -2,7 +2,6 @@
 
 namespace Board\Marketplace\Support;
 
-use Composer\InstalledVersions;
 use Illuminate\Support\Facades\File;
 
 /**
@@ -139,7 +138,10 @@ class ComposerProject
 
     /**
      * Every package the host app ships, pinned at its installed version, so the
-     * plugins project treats them as already provided.
+     * plugins project treats them as already provided. Read from the host's own
+     * installed.php ({@see HostPackages}) — NEVER from InstalledVersions, which
+     * gets polluted by the plugins-project autoloader and would make the map
+     * replace the runtime project itself, wedging every later composer run.
      *
      * @return array<string, string>
      */
@@ -147,22 +149,31 @@ class ComposerProject
     {
         $replace = [];
 
-        foreach (InstalledVersions::getInstalledPackages() as $name) {
-            $version = InstalledVersions::getPrettyVersion($name);
-
-            if ($version === null) {
+        foreach (HostPackages::versions() as $name => $info) {
+            // The runtime project must never appear in its own replace map.
+            if ($name === 'board/plugins-runtime') {
                 continue;
             }
 
-            // Branch installs ("dev-master") are not SemVer-comparable; prefer a
-            // numeric alias ("0.2.x-dev") so plugin constraints still resolve.
-            if (! preg_match('/^[\dv]/', $version)) {
-                foreach (InstalledVersions::getRawData()['versions'][$name]['aliases'] ?? [] as $alias) {
-                    if (preg_match('/^\d/', $alias)) {
-                        $version = $alias;
+            $version = HostPackages::prettyVersion($name);
+
+            // Virtual packages the host replaces (illuminate/* via
+            // laravel/framework): pin them too, so composer never installs a
+            // duplicate framework copy into the plugins vendor — plugins run
+            // IN the host process, a second copy of these is a landmine.
+            if ($version === null || ! preg_match('/^[\dv]/', $version)) {
+                $version = null;
+
+                foreach ($info['replaced'] ?? [] as $replaced) {
+                    if (preg_match('/^[\dv]/', (string) $replaced)) {
+                        $version = (string) $replaced;
                         break;
                     }
                 }
+            }
+
+            if ($version === null) {
+                continue;
             }
 
             $replace[$name] = ltrim($version, 'vV');
