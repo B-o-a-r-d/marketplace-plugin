@@ -5,6 +5,7 @@ namespace Board\Marketplace;
 use Board\Marketplace\Console\CheckPluginUpdates;
 use Board\Marketplace\Livewire\Marketplace;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Foundation\Support\Providers\RouteServiceProvider;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,7 +23,23 @@ class MarketplaceServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/board-marketplace.php', 'board-marketplace');
 
         // Boot installed plugin packages once the app is booted (DB ready).
-        $this->app->booted(fn () => (new PluginLoader($this->app))->boot());
+        //
+        // Ordering trap on hosts with `route:cache`: the framework loads the
+        // compiled routes from its own booted callback — queued AFTER ours —
+        // and setCompiledRoutes() REPLACES the whole collection, wiping every
+        // route the plugin providers just registered. On cached hosts we
+        // therefore take over the cache load itself (the framework's official
+        // hook) and boot the plugins right after the compiled collection is
+        // in place, so their routes land on top of it.
+        if ($this->app->routesAreCached()) {
+            RouteServiceProvider::loadCachedRoutesUsing(function () {
+                require $this->app->getCachedRoutesPath();
+
+                (new PluginLoader($this->app))->boot();
+            });
+        } else {
+            $this->app->booted(fn () => (new PluginLoader($this->app))->boot());
+        }
     }
 
     public function boot(): void
