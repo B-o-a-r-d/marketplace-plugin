@@ -104,13 +104,32 @@ class PluginInstaller
             return;
         }
 
+        // Removing a plugin from the UI must always succeed: a composer hiccup,
+        // a missing manifest or a dev-symlinked project can never leave the row
+        // (and the loader booting it) behind — best-effort composer cleanup,
+        // then reclaim the on-disk install, then drop the record.
         if ($package->isComposer()) {
-            $this->project->remove($package->package_name);
-        } else {
-            File::deleteDirectory(storage_path('app/plugins/'.$package->key));
+            rescue(fn () => $this->project->remove($package->package_name));
         }
 
+        $this->deleteInstallDirectory(storage_path('app/'.$package->path));
+
         $package->delete();
+    }
+
+    /**
+     * Reclaim a plugin's on-disk install. A dev install is a SYMLINK — unlink
+     * the link itself, never recurse into (and wipe) the real source repo.
+     */
+    private function deleteInstallDirectory(string $path): void
+    {
+        if (is_link($path)) {
+            @unlink($path);
+
+            return;
+        }
+
+        File::deleteDirectory($path);
     }
 
     /**

@@ -76,9 +76,17 @@ class ComposerProject
 
     /**
      * `composer remove` a plugin package, rolling the manifest back on failure.
+     *
+     * A no-op when there is no managed manifest (a dev-symlinked or
+     * archive-only plugins project has none): running composer there fails
+     * with "./composer.json is not readable" and would block the uninstall.
      */
     public function remove(string $package): void
     {
+        if (! is_file($this->manifestPath())) {
+            return;
+        }
+
         $this->transaction(function () use ($package) {
             $this->runner->run(['remove', $package, '--update-no-dev'], $this->path());
         });
