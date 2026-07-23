@@ -46,6 +46,9 @@ class Marketplace extends Component
 
     public string $newRepoUrl = '';
 
+    /** Live filter over the catalog + off-catalog cards. */
+    public string $search = '';
+
     public function mount(): void
     {
         abort_unless(Gate::allows('admin'), 403);
@@ -309,10 +312,47 @@ class Marketplace extends Component
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $entry
+     */
+    private function matchesSearch(array $entry, string $query): bool
+    {
+        $hay = mb_strtolower(implode(' ', [
+            (string) ($entry['name'] ?? ''),
+            (string) ($entry['description'] ?? ''),
+            (string) ($entry['package'] ?? ''),
+            (string) ($entry['key'] ?? ''),
+            (string) ($entry['category'] ?? ''),
+        ]));
+
+        return str_contains($hay, mb_strtolower($query));
+    }
+
     public function render(): View
     {
         $installed = PluginPackage::all()->keyBy('key');
-        $catalog = app(MarketplaceClient::class)->catalog();
+        $fullCatalog = app(MarketplaceClient::class)->catalog();
+
+        // Off-catalog = installed but absent from the full catalog (computed
+        // before search so the "not in catalog" check stays correct).
+        $offCatalog = $installed
+            ->filter(fn (PluginPackage $package): bool => ! $fullCatalog->contains(fn (array $entry): bool => $entry['key'] === $package->key))
+            ->values();
+
+        // Live search over both lists (name / description / package / key).
+        $query = trim($this->search);
+        $catalog = $query !== ''
+            ? $fullCatalog->filter(fn (array $entry): bool => $this->matchesSearch($entry, $query))->values()
+            : $fullCatalog;
+
+        if ($query !== '') {
+            $offCatalog = $offCatalog
+                ->filter(fn (PluginPackage $p): bool => str_contains(
+                    mb_strtolower($p->name.' '.$p->package_name.' '.$p->key),
+                    mb_strtolower($query),
+                ))
+                ->values();
+        }
 
         $registry = app(PluginRegistry::class);
         $configurableKeys = $installed->keys()
@@ -333,14 +373,12 @@ class Marketplace extends Component
             'installed' => $installed,
             // Installed from a custom source, not listed in the catalog — still
             // needs its update/toggle/uninstall controls.
-            'offCatalog' => $installed
-                ->filter(fn (PluginPackage $package): bool => ! $catalog->contains(fn (array $entry): bool => $entry['key'] === $package->key))
-                ->values(),
+            'offCatalog' => $offCatalog,
             'configurableKeys' => $configurableKeys,
             'downloads' => $downloads,
             'repositories' => $this->showSource ? PluginRepository::orderBy('id')->get() : collect(),
             'detailsEntry' => $this->detailsKey !== null
-                ? $catalog->firstWhere('key', $this->detailsKey)
+                ? $fullCatalog->firstWhere('key', $this->detailsKey)
                 : null,
             'settingsFields' => $this->configuringKey !== null
                 ? ($this->settingsPlugin($this->configuringKey)?->settings() ?? [])

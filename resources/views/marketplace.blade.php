@@ -51,6 +51,20 @@
         </div>
     @endunless
 
+    {{-- Live search over the catalog + off-catalog cards --}}
+    <div class="relative mb-4">
+        <x-phosphor-magnifying-glass class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"/>
+        <input type="search" wire:model.live.debounce.200ms="search"
+               placeholder="{{ __('Rechercher un Power-Up…') }}"
+               class="w-full rounded-lg border border-neutral-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-indigo-500 focus:outline-none dark:border-neutral-700 dark:bg-neutral-800">
+        @if (trim($search) !== '')
+            <button type="button" wire:click="$set('search', '')"
+                    class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-300">
+                <x-phosphor-x class="h-4 w-4"/>
+            </button>
+        @endif
+    </div>
+
     <div :class="view === 'grid' ? 'grid items-start gap-4 sm:grid-cols-2' : 'space-y-3'">
         @forelse ($catalog as $entry)
             @php $pkg = $installed[$entry['key']] ?? null; @endphp
@@ -170,7 +184,11 @@
             </div>
         @empty
             <div class="rounded-xl border border-dashed border-neutral-300 p-10 text-center text-sm text-neutral-400 dark:border-neutral-700 sm:col-span-2">
-                {{ __('Catalogue vide ou indisponible.') }}
+                @if (trim($search) !== '')
+                    {{ __('Aucun Power-Up ne correspond à « :query ».', ['query' => $search]) }}
+                @else
+                    {{ __('Catalogue vide ou indisponible.') }}
+                @endif
             </div>
         @endforelse
     </div>
