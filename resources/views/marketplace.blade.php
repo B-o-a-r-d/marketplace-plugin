@@ -230,7 +230,7 @@
 
     {{-- Install from a custom source: composer repositories + raw package name --}}
     @if ($showSource)
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" wire:key="plugin-source-modal">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-4 backdrop-blur-sm" wire:key="plugin-source-modal">
             <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
                 <h2 class="text-lg font-semibold">{{ __('Installer depuis une source') }}</h2>
                 <p class="mt-1 text-xs text-neutral-500">{{ __('Le package sera résolu via Packagist et les sources ci-dessous, comme un composer require.') }}</p>
@@ -283,7 +283,7 @@
 
     {{-- Catalog entry details: banner, screenshots, readme --}}
     @if ($detailsEntry !== null)
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" wire:key="plugin-details-{{ $detailsEntry['key'] }}" wire:click.self="showDetails(null)">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-4 backdrop-blur-sm" wire:key="plugin-details-{{ $detailsEntry['key'] }}" wire:click.self="showDetails(null)">
             <div class="flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl dark:bg-neutral-900">
                 @if ($detailsEntry['banner'] !== '')
                     <img src="{{ $detailsEntry['banner'] }}" alt="" class="h-36 w-full shrink-0 object-cover">
@@ -323,7 +323,7 @@
 
     {{-- Instance settings for an installed plugin (no-code, no .env) --}}
     @if ($configuringKey !== null)
-        <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" wire:key="plugin-settings-{{ $configuringKey }}">
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-4 backdrop-blur-sm" wire:key="plugin-settings-{{ $configuringKey }}">
             <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
                 <h2 class="text-lg font-semibold">{{ __('Réglages') }} · {{ $configuringKey }}</h2>
                 <p class="mt-1 text-xs text-neutral-500">{{ __("Réglages d'instance, appliqués à tous les boards. Aucun redémarrage ni .env requis.") }}</p>

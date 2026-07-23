@@ -147,13 +147,22 @@ class PluginInstaller
 
         foreach (PluginPackage::all() as $package) {
             try {
+                // Reconcile the recorded version with what composer actually has
+                // on disk: a manual `composer update` (or any drift between the
+                // DB and composer.lock) would otherwise leave the card showing a
+                // stale version and hide — or falsely advertise — an update.
+                $version = $package->isComposer()
+                    ? ($this->project->installedVersion($package->package_name) ?? $package->version)
+                    : $package->version;
+
                 $available = $package->isComposer()
-                    ? ($latestByName[$package->package_name] ?? $package->version)
+                    ? ($latestByName[$package->package_name] ?? $version)
                     : $this->normalize($this->latestReleaseTag($package->repo));
 
                 $package->update([
+                    'version' => $version,
                     'available_version' => $available,
-                    'breaking_update' => $this->isBreaking($package->version, $available),
+                    'breaking_update' => $this->isBreaking($version, $available),
                 ]);
             } catch (\Throwable $e) {
                 report($e);
