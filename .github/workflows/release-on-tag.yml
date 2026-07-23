@@ -1,0 +1,31 @@
+name: Release on tag
+
+# Every pushed vX.Y.Z tag becomes a matching GitHub Release, so the Releases page
+# (and anything that reads releases/latest — the public site's /plugins catalog,
+# the marketplace's VCS lookup) always tracks the tags Packagist resolves from.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create the Release from the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          BODY="$(git tag -l --format='%(contents)' "$TAG")"
+          if [ -n "$BODY" ]; then
+            gh release create "$TAG" --title "$TAG" --notes "$BODY"
+          else
+            gh release create "$TAG" --title "$TAG" --generate-notes
+          fi
