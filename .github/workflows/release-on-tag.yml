@@ -23,7 +23,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          BODY="$(git tag -l --format='%(contents)' "$TAG")"
+          # subject + body only — %(contents) would append the GPG signature.
+          BODY="$(git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$TAG")"
           if [ -n "$BODY" ]; then
             gh release create "$TAG" --title "$TAG" --notes "$BODY"
           else
