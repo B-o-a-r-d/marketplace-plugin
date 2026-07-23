@@ -6,7 +6,7 @@
             <h1 class="flex items-center gap-2 text-xl font-semibold tracking-tight sm:text-2xl">
                 <x-phosphor-puzzle-piece class="h-6 w-6"/> {{ __('Marketplace') }}
             </h1>
-            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Installez des Power-Ups à chaud, sans redéploiement.') }}</p>
+            <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Ajoutez de nouvelles fonctionnalités à votre espace en un clic.') }}</p>
         </div>
         <div class="flex shrink-0 flex-wrap items-center gap-3">
             <label class="flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-300">
@@ -410,7 +410,7 @@
                                class="mt-0.5 h-4 w-4 rounded border-neutral-300 text-red-600 focus:ring-red-500">
                         <span class="text-sm">
                             <span class="font-medium">{{ __('Supprimer aussi les données') }}</span>
-                            <span class="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">{{ __('Annule les migrations du Power-Up et supprime ses tables (comme un migrate:reset). Irréversible.') }}</span>
+                            <span class="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">{{ __('Supprime définitivement les données créées par ce Power-Up.') }}</span>
                         </span>
                     </label>
                     @if ($purgeData)
