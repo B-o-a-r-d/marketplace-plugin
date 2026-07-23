@@ -49,6 +49,12 @@ class Marketplace extends Component
     /** Live filter over the catalog + off-catalog cards. */
     public string $search = '';
 
+    /** The plugin key pending an uninstall confirmation, or null. */
+    public ?string $uninstallingKey = null;
+
+    /** Whether the pending uninstall should also drop the plugin's tables. */
+    public bool $purgeData = false;
+
     public function mount(): void
     {
         abort_unless(Gate::allows('admin'), 403);
@@ -85,12 +91,52 @@ class Marketplace extends Component
         $this->run(fn () => app(PluginInstaller::class)->update($key, $confirmBreaking), __('Plugin mis à jour'));
     }
 
-    public function uninstall(string $key): void
+    /**
+     * Open the uninstall confirmation for an installed plugin. The modal offers
+     * an opt-in "also delete data" toggle (shown only when the plugin ships
+     * migrations) — see {@see confirmUninstall}.
+     */
+    public function startUninstall(string $key): void
     {
         $this->guard();
 
-        app(PluginInstaller::class)->uninstall($key);
-        $this->dispatch('toast', message: __('Plugin désinstallé'), type: 'success');
+        if (PluginPackage::where('key', $key)->doesntExist()) {
+            return;
+        }
+
+        $this->purgeData = false;
+        $this->uninstallingKey = $key;
+    }
+
+    public function cancelUninstall(): void
+    {
+        $this->uninstallingKey = null;
+        $this->purgeData = false;
+    }
+
+    public function confirmUninstall(): void
+    {
+        $this->guard();
+
+        if ($this->uninstallingKey === null) {
+            return;
+        }
+
+        $purge = $this->purgeData;
+
+        try {
+            app(PluginInstaller::class)->uninstall($this->uninstallingKey, $purge);
+        } catch (PluginInstallException $e) {
+            $this->cancelUninstall();
+            $this->dispatch('toast', message: $e->getMessage(), type: 'error');
+
+            return;
+        }
+
+        $this->cancelUninstall();
+        $this->dispatch('toast', message: $purge
+            ? __('Plugin désinstallé et données supprimées')
+            : __('Plugin désinstallé'), type: 'success');
     }
 
     public function togglePackage(string $key): void
@@ -354,6 +400,15 @@ class Marketplace extends Component
                 ->values();
         }
 
+        // Uninstall confirmation target: the installed package + whether it
+        // ships migrations (so the "also delete data" toggle only shows when
+        // there is data to purge).
+        $uninstallTarget = $this->uninstallingKey !== null
+            ? ($installed[$this->uninstallingKey] ?? null)
+            : null;
+        $uninstallHasData = $uninstallTarget !== null
+            && app(PluginInstaller::class)->pluginHasData($uninstallTarget);
+
         $registry = app(PluginRegistry::class);
         $configurableKeys = $installed->keys()
             ->filter(fn (string $key): bool => $registry->get($key) instanceof ProvidesSettings)
@@ -383,6 +438,8 @@ class Marketplace extends Component
             'settingsFields' => $this->configuringKey !== null
                 ? ($this->settingsPlugin($this->configuringKey)?->settings() ?? [])
                 : [],
+            'uninstallTarget' => $uninstallTarget,
+            'uninstallHasData' => $uninstallHasData,
         ]);
     }
 }

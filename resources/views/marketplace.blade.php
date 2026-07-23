@@ -172,8 +172,7 @@
                                         class="rounded-lg border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800">
                                     {{ $pkg->enabled ? __('Désactiver') : __('Activer') }}
                                 </button>
-                                <button type="button" @disabled(! $enabled)
-                                        @click="$store.confirm.open({ title: '{{ __('Désinstaller') }}', message: '{{ __('Retirer ce plugin de l’instance ?') }}', confirmLabel: '{{ __('Désinstaller') }}', danger: true }).then(ok => ok && $wire.uninstall('{{ $entry['key'] }}'))"
+                                <button type="button" @disabled(! $enabled) wire:click="startUninstall('{{ $entry['key'] }}')"
                                         class="rounded-lg p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-500/10" title="{{ __('Désinstaller') }}">
                                     <x-phosphor-trash class="h-4 w-4"/>
                                 </button>
@@ -235,8 +234,7 @@
                                 class="rounded-lg border border-neutral-300 px-2 py-1 text-xs hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800">
                             {{ $pkg->enabled ? __('Désactiver') : __('Activer') }}
                         </button>
-                        <button type="button" @disabled(! $enabled)
-                                @click="$store.confirm.open({ title: '{{ __('Désinstaller') }}', message: '{{ __('Retirer ce plugin de l’instance ?') }}', confirmLabel: '{{ __('Désinstaller') }}', danger: true }).then(ok => ok && $wire.uninstall('{{ $pkg->key }}'))"
+                        <button type="button" @disabled(! $enabled) wire:click="startUninstall('{{ $pkg->key }}')"
                                 class="rounded-lg p-1.5 text-neutral-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-500/10" title="{{ __('Désinstaller') }}">
                             <x-phosphor-trash class="h-4 w-4"/>
                         </button>
@@ -387,6 +385,52 @@
                             class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{{ __('Annuler') }}</button>
                     <button type="button" wire:click="saveSettings"
                             class="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-700">{{ __('Enregistrer') }}</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Uninstall confirmation — with an opt-in clean removal of the plugin's data --}}
+    @if ($uninstallTarget !== null)
+        <div class="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/50 p-4 backdrop-blur-sm" wire:key="plugin-uninstall-{{ $uninstallTarget->key }}" wire:click.self="cancelUninstall">
+            <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-neutral-900">
+                <div class="flex items-start gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-50 text-red-600 dark:bg-red-500/10">
+                        <x-phosphor-trash class="h-5 w-5"/>
+                    </span>
+                    <div class="min-w-0">
+                        <h2 class="text-lg font-semibold">{{ __('Désinstaller') }} · {{ $uninstallTarget->name }}</h2>
+                        <p class="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{{ __('Retirer ce Power-Up de l’instance ? Il pourra être réinstallé depuis la marketplace.') }}</p>
+                    </div>
+                </div>
+
+                @if ($uninstallHasData)
+                    <label class="mt-4 flex cursor-pointer items-start gap-2.5 rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+                        <input type="checkbox" wire:model.live="purgeData"
+                               class="mt-0.5 h-4 w-4 rounded border-neutral-300 text-red-600 focus:ring-red-500">
+                        <span class="text-sm">
+                            <span class="font-medium">{{ __('Supprimer aussi les données') }}</span>
+                            <span class="mt-0.5 block text-xs text-neutral-500 dark:text-neutral-400">{{ __('Annule les migrations du Power-Up et supprime ses tables (comme un migrate:reset). Irréversible.') }}</span>
+                        </span>
+                    </label>
+                    @if ($purgeData)
+                        <p class="mt-2 flex items-start gap-1.5 text-xs text-red-600 dark:text-red-400">
+                            <x-phosphor-warning class="mt-0.5 h-3.5 w-3.5 shrink-0"/>
+                            {{ __('Toutes les données de ce Power-Up seront définitivement perdues.') }}
+                        </p>
+                    @endif
+                @else
+                    <p class="mt-4 rounded-lg bg-neutral-50 px-3 py-2 text-xs text-neutral-400 dark:bg-neutral-800/50">{{ __('Ce Power-Up ne stocke aucune donnée en base — rien à nettoyer.') }}</p>
+                @endif
+
+                <div class="mt-6 flex justify-end gap-2">
+                    <button type="button" wire:click="cancelUninstall"
+                            class="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800">{{ __('Annuler') }}</button>
+                    <button type="button" wire:click="confirmUninstall" wire:loading.attr="disabled" wire:target="confirmUninstall"
+                            class="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-40">
+                        <span wire:loading.remove wire:target="confirmUninstall">{{ $purgeData && $uninstallHasData ? __('Désinstaller et supprimer') : __('Désinstaller') }}</span>
+                        <span wire:loading wire:target="confirmUninstall">{{ __('Désinstallation…') }}</span>
+                    </button>
                 </div>
             </div>
         </div>

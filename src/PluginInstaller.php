@@ -96,12 +96,27 @@ class PluginInstaller
         ], $tag);
     }
 
-    public function uninstall(string $key): void
+    /**
+     * Remove a plugin package. By default the plugin's tables are KEPT (a
+     * reinstall keeps its data). With `$purgeData`, the plugin's own migrations
+     * are rolled back FIRST — dropping the tables it created — for a clean,
+     * artifact-free uninstall (the `php artisan migrate:reset` equivalent).
+     */
+    public function uninstall(string $key, bool $purgeData = false): void
     {
         $package = PluginPackage::where('key', $key)->first();
 
         if ($package === null) {
             return;
+        }
+
+        // Opt-in clean uninstall: run the plugin's migration down()s while its
+        // files are still on disk (composer remove / directory delete below wipe
+        // them). This throws on failure — deliberately BEFORE anything is
+        // removed, so the plugin stays installed and the admin can retry rather
+        // than losing the plugin AND keeping orphaned tables.
+        if ($purgeData) {
+            $this->rollbackPluginMigrations(storage_path('app/'.$package->path));
         }
 
         // Removing a plugin from the UI must always succeed: a composer hiccup,
@@ -270,8 +285,8 @@ class PluginInstaller
     /**
      * Run the package's own migrations (database/migrations) at install/update,
      * so a plugin can ship schema (e.g. a workspace-type plugin's tables). No-op
-     * when the package ships none. Uninstall keeps the tables — data is never
-     * dropped by removing a plugin.
+     * when the package ships none. Uninstall keeps the tables by default; an
+     * opt-in clean uninstall rolls them back via {@see rollbackPluginMigrations}.
      */
     private function runPluginMigrations(string $packageDir): void
     {
@@ -286,6 +301,41 @@ class PluginInstaller
             '--path' => $migrations,
             '--force' => true,
         ]);
+    }
+
+    /**
+     * Roll back the package's own migrations on an opt-in clean uninstall —
+     * running every down() in database/migrations to drop the tables it created
+     * and clear their rows from the `migrations` table (scoped to this plugin's
+     * path, the `php artisan migrate:reset` equivalent). No-op when the package
+     * ships none. Throws on failure so the caller aborts before removing files.
+     */
+    private function rollbackPluginMigrations(string $packageDir): void
+    {
+        $migrations = $packageDir.'/database/migrations';
+
+        if (! is_dir($migrations)) {
+            return;
+        }
+
+        $exit = Artisan::call('migrate:reset', [
+            '--realpath' => true,
+            '--path' => $migrations,
+            '--force' => true,
+        ]);
+
+        if ($exit !== 0) {
+            throw new PluginInstallException(__('Échec de l’annulation des migrations du plugin — données non supprimées.'));
+        }
+    }
+
+    /**
+     * Whether a plugin ships its own migrations (and therefore may have created
+     * tables the admin can choose to purge at uninstall).
+     */
+    public function pluginHasData(PluginPackage $package): bool
+    {
+        return is_dir(storage_path('app/'.$package->path.'/database/migrations'));
     }
 
     private function assertValidPackageName(string $name): void
